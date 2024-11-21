@@ -19,7 +19,7 @@ uint8_t buffer_m[6];
 
 int16_t ax, ay, az;
 int16_t gx, gy, gz;
-int16_t   mx, my, mz;
+int16_t mx, my, mz;
 
 float pitch;
 float roll;
@@ -32,16 +32,21 @@ float Gxyz[3];
 float Mxyz[3];
 
 
-#define sample_num_mdate  10
 #define sample_num_adate  10
-
-static float mx_centre = 0;
-static float my_centre = 0;
-static float mz_centre = 0;
+#define sample_num_gdate  10
+#define sample_num_mdate  10
 
 static float ax_centre = 0;
 static float ay_centre = 0;
 static float az_centre = 0;
+
+static float gx_centre = 0;
+static float gy_centre = 0;
+static float gz_centre = 0;
+
+static float mx_centre = 0;
+static float my_centre = 0;
+static float mz_centre = 0;
 
 // Kalman filter variables for each axis
 float accelEstimateX = 0.0, accelEstimateY = 0.0, accelEstimateZ = 0.0;
@@ -117,6 +122,7 @@ void setup()
     //Mxyz_init_calibrated ();
 
     Axyz_init_calibrated();
+    Gxyz_init_calibrated();
 
 }
 
@@ -152,16 +158,17 @@ void loop()
     Serial.print(",");
     Serial.println(Axyz[2]);
 
+    Serial.println("Gyro(degress/s) of X,Y,Z:");
+    Serial.print(Gxyz[0]);
+    Serial.print(",");
+    Serial.print(Gxyz[1]);
+    Serial.print(",");
+    Serial.println(Gxyz[2]);
+
     Serial.print("Pitch: ");
     Serial.println(pitch);
     Serial.print("Roll: ");
     Serial.println(roll);
-    // Serial.println("Gyro(degress/s) of X,Y,Z:");
-    // Serial.print(Gxyz[0]);
-    // Serial.print(",");
-    // Serial.print(Gxyz[1]);
-    // Serial.print(",");
-    // Serial.println(Gxyz[2]);
     // Serial.println("Compass Value of X,Y,Z:");
     // Serial.print(Mxyz[0]);
     // Serial.print(",");
@@ -270,6 +277,32 @@ void Axyz_init_calibrated ()
     Serial.print(ay_centre);
     Serial.print("     ");
     Serial.println(az_centre);
+    Serial.println("    ");
+}
+
+void Gxyz_init_calibrated ()
+{
+
+    Serial.println(F("Before using 9DOF,we need to calibrate the gyroscope frist,It will takes about 2 minutes."));
+    Serial.print("  ");
+    Serial.println(F("During  calibratting ,you should rotate and turn the 9DOF all the time within 2 minutes."));
+    Serial.print("  ");
+    Serial.println(F("If you are ready ,please sent a command data 'ready' to start sample and calibrate."));
+    while (!Serial.find("ready"));
+    Serial.println("  ");
+    Serial.println("ready");
+    Serial.println("Sample starting......");
+    Serial.println("waiting ......");
+
+    calibrate_gyroscope();
+
+    Serial.println("     ");
+    Serial.println("accelerometer gyroscope parameter ");
+    Serial.print(gx_centre);
+    Serial.print("     ");
+    Serial.print(gy_centre);
+    Serial.print("     ");
+    Serial.println(gz_centre);
     Serial.println("    ");
 }
 
@@ -418,6 +451,51 @@ void calibrate_accelerometer() {
     Serial.println(az_centre);
 }
 
+void calibrate_gyroscope() {
+
+    float gx_samples[sample_num_gdate];
+    float gy_samples[sample_num_gdate];
+    float gz_samples[sample_num_gdate];
+
+    // Collect samples
+    for (int i = 0; i < sample_num_adate; i++) {
+        Serial.println(i);
+        getRawGyro_Data();
+        gx_samples[i] = Axyz[0];
+        gy_samples[i] = Axyz[1];
+        gz_samples[i] = Axyz[2];
+    }
+
+    // Calculate mean and standard deviation for each axis
+    float gx_mean = calculate_mean(gx_samples, sample_num_adate);
+    float gy_mean = calculate_mean(gy_samples, sample_num_adate);
+    float gz_mean = calculate_mean(gz_samples, sample_num_adate);
+
+    float gx_stddev = calculate_stddev(gx_samples, sample_num_adate, gx_mean);
+    float gy_stddev = calculate_stddev(gy_samples, sample_num_adate, gy_mean);
+    float gz_stddev = calculate_stddev(gz_samples, sample_num_adate, gz_mean);
+
+    // Filter outliers
+    float gx_filtered[sample_num_mdate], gy_filtered[sample_num_mdate], gz_filtered[sample_num_mdate];
+    int gx_filtered_size = filter_outliers(gx_samples, sample_num_mdate, gx_mean, gx_stddev, gx_filtered);
+    int gy_filtered_size = filter_outliers(gy_samples, sample_num_mdate, gy_mean, gy_stddev, gy_filtered);
+    int gz_filtered_size = filter_outliers(gz_samples, sample_num_mdate, gz_mean, gz_stddev, gz_filtered);
+
+    // Calculate the final mean for each axis
+    gx_centre = calculate_median(gx_filtered, gx_filtered_size);
+    gy_centre = calculate_median(gy_filtered, gy_filtered_size);
+    gz_centre = calculate_median(gz_filtered, gz_filtered_size);
+
+    // Print the results
+    Serial.print("Calibration Results: ");
+    Serial.print("gx_centre: ");
+    Serial.print(gx_centre);
+    Serial.print(" gy_centre: ");
+    Serial.print(gy_centre);
+    Serial.print(" gz_centre: ");
+    Serial.println(gz_centre);
+}
+
 void getRawAccel_Data(void) {
     accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
 
@@ -438,22 +516,30 @@ void getAccel_Data(void) {
     float rawGz = (double) gz * 250 / 32768;
 
     // Apply Kalman filter to each axis
-    // Axyz[0] = kalmanFilter(0, rawAx, rawGx, dt); // Filtered X-axis
-    // Axyz[1] = kalmanFilter(1, rawAy, rawGy, dt); // Filtered Y-axis
-    // Axyz[2] = kalmanFilter(2, rawAz, rawGz, dt); // Filtered Z-axis
+    Axyz[0] = kalmanFilter(0, rawAx, rawGx, dt); // Filtered X-axis
+    Axyz[1] = kalmanFilter(1, rawAy, rawGy, dt); // Filtered Y-axis
+    Axyz[2] = kalmanFilter(2, rawAz, rawGz, dt); // Filtered Z-axis
 
-    Axyz[0] = rawAx;
-    Axyz[1] = rawAy;
-    Axyz[2] = rawAz;
+    //Axyz[0] = rawAx;
+    //Axyz[1] = rawAy;
+    //Axyz[2] = rawAz;
 }
 
 
-void getGyro_Data(void)
+void getRawGyro_Data(void)
 {
     accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
     Gxyz[0] = (double) gx * 250 / 32768;
     Gxyz[1] = (double) gy * 250 / 32768;
     Gxyz[2] = (double) gz * 250 / 32768;
+}
+
+void getGyro_Data(void)
+{
+    accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
+    Gxyz[0] = ((double) gx * 250 / 32768) - gx_centre;
+    Gxyz[1] = ((double) gy * 250 / 32768) - gy_centre;
+    Gxyz[2] = ((double) gz * 250 / 32768) - gz_centre;
 }
 
 void getCompass_Data(void)
