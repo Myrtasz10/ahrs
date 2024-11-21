@@ -32,20 +32,12 @@ float Gxyz[3];
 float Mxyz[3];
 
 
-#define sample_num_mdate  5000
-#define sample_num_adate  500
-
-float mx_samples[sample_num_mdate];
-float my_samples[sample_num_mdate];
-float mz_samples[sample_num_mdate];
+#define sample_num_mdate  10
+#define sample_num_adate  10
 
 static float mx_centre = 0;
 static float my_centre = 0;
 static float mz_centre = 0;
-
-float ax_samples[sample_num_adate];
-float ay_samples[sample_num_adate];
-float az_samples[sample_num_adate];
 
 static float ax_centre = 0;
 static float ay_centre = 0;
@@ -124,7 +116,7 @@ void setup()
 
     //Mxyz_init_calibrated ();
 
-    calibrate_accelerometer();
+    Axyz_init_calibrated();
 
 }
 
@@ -269,7 +261,7 @@ void Axyz_init_calibrated ()
     Serial.println("Sample starting......");
     Serial.println("waiting ......");
 
-    calibrate_accelerometer ();
+    calibrate_accelerometer();
 
     Serial.println("     ");
     Serial.println("accelerometer calibration parameter ");
@@ -339,6 +331,10 @@ int filter_outliers(float* data, int size, float mean, float stddev, float* filt
 }
 
 void calibrate_magnetometer() {
+    float mx_samples[sample_num_mdate];
+    float my_samples[sample_num_mdate];
+    float mz_samples[sample_num_mdate];
+
     // Collect samples
     for (int i = 0; i < sample_num_mdate; i++) {
         getCompass_Data();
@@ -378,8 +374,14 @@ void calibrate_magnetometer() {
 }
 
 void calibrate_accelerometer() {
+
+    float ax_samples[sample_num_adate];
+    float ay_samples[sample_num_adate];
+    float az_samples[sample_num_adate];
+
     // Collect samples
     for (int i = 0; i < sample_num_adate; i++) {
+        Serial.println(i);
         getRawAccel_Data();
         ax_samples[i] = Axyz[0];
         ay_samples[i] = Axyz[1];
@@ -436,9 +438,13 @@ void getAccel_Data(void) {
     float rawGz = (double) gz * 250 / 32768;
 
     // Apply Kalman filter to each axis
-    Axyz[0] = kalmanFilter(0, rawAx, rawGx, dt); // Filtered X-axis
-    Axyz[1] = kalmanFilter(1, rawAy, rawGy, dt); // Filtered Y-axis
-    Axyz[2] = kalmanFilter(2, rawAz, rawGz, dt); // Filtered Z-axis
+    // Axyz[0] = kalmanFilter(0, rawAx, rawGx, dt); // Filtered X-axis
+    // Axyz[1] = kalmanFilter(1, rawAy, rawGy, dt); // Filtered Y-axis
+    // Axyz[2] = kalmanFilter(2, rawAz, rawGz, dt); // Filtered Z-axis
+
+    Axyz[0] = rawAx;
+    Axyz[1] = rawAy;
+    Axyz[2] = rawAz;
 }
 
 
