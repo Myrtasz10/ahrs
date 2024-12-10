@@ -11,10 +11,11 @@
 // specific I2C addresses may be passed as a parameter here
 // AD0 low = 0x68 (default for InvenSense evaluation board)
 // AD0 high = 0x69
-MPU9250 accelgyro;
+MPU9250 accelgyro(0x69);
 I2Cdev   I2C_M;
 
 uint8_t buffer_m[6];
+
 
 
 int16_t ax, ay, az;
@@ -30,6 +31,8 @@ float tiltheading;
 float Axyz[3];
 float Gxyz[3];
 float Mxyz[3];
+
+float Displacementxyz[3] = {0.0, 0.0, 0.0};
 
 
 #define sample_num_adate  10
@@ -63,7 +66,6 @@ float temperature;
 float pressure;
 float atm;
 float altitude;
-BMP180 Barometer;
 
 // Kalman filter variables per axis
 struct KalmanAxis {
@@ -83,7 +85,7 @@ float kalmanFilter(int axis, float gyroRate, float accelAngle, float dt) {
 
     // Tuning parameters
     const float processNoise = 0.02;   // System noise (gyro)
-    const float measurementNoise = 3.0; // Measurement noise (accelerometer)
+    const float measurementNoise = 0.02; // Measurement noise (accelerometer)
 
     // 1. Prediction Step
     state += dt * (gyroRate - gyroBias);  // Predict the next angle based on gyro rate
@@ -110,7 +112,6 @@ void setup()
     // initialize device
     Serial.println("Initializing I2C devices...");
     accelgyro.initialize();
-    Barometer.init();
 
     // verify connection
     Serial.println("Testing device connections...");
@@ -119,10 +120,9 @@ void setup()
     delay(1000);
     Serial.println("     ");
 
-    //Mxyz_init_calibrated ();
-
     Axyz_init_calibrated();
     Gxyz_init_calibrated();
+    //Mxyz_init_calibrated();
 
 }
 
@@ -150,6 +150,9 @@ void loop()
     // Serial.println(mz_centre);
     // Serial.println("     ");
 
+    Displacementxyz[0] += Axyz[0] * dt;
+    Displacementxyz[1] += Axyz[1] * dt;
+    Displacementxyz[2] += (Axyz[2]-1.0) * dt;
 
     Serial.println("Acceleration(g) of X,Y,Z:");
     Serial.print(Axyz[0]);
@@ -157,6 +160,13 @@ void loop()
     Serial.print(Axyz[1]);
     Serial.print(",");
     Serial.println(Axyz[2]);
+
+    Serial.println("Displacement(g) of X,Y,Z:");
+    Serial.print(Displacementxyz[0]);
+    Serial.print(",");
+    Serial.print(Displacementxyz[1]);
+    Serial.print(",");
+    Serial.println(Displacementxyz[2]);
 
     Serial.println("Gyro(degress/s) of X,Y,Z:");
     Serial.print(Gxyz[0]);
@@ -182,9 +192,9 @@ void loop()
     // Serial.println(tiltheading);
     // Serial.println("   ");
 
-    // temperature = Barometer.bmp180GetTemperature(Barometer.bmp180ReadUT()); //Get the temperature, bmp180ReadUT MUST be called first
-    // pressure = Barometer.bmp180GetPressure(Barometer.bmp180ReadUP());//Get the temperature
-    // altitude = Barometer.calcAltitude(pressure); //Uncompensated caculation - in Meters
+    // temperature = barometer.bmp180GetTemperature(barometer.bmp180ReadUT()); //Get the temperature, bmp180ReadUT MUST be called first
+    // pressure = barometer.bmp180GetPressure(barometer.bmp180ReadUP());//Get the temperature
+    // altitude = barometer.calcAltitude(pressure); //Uncompensated caculation - in Meters
     // atm = pressure / 101325;
 
     // Serial.print("Temperature: ");
@@ -203,7 +213,7 @@ void loop()
     // Serial.println(" m");
 
     Serial.println();
-    delay(1000);
+    delay(500);
 
 }
 
@@ -282,18 +292,6 @@ void Axyz_init_calibrated ()
 
 void Gxyz_init_calibrated ()
 {
-
-    Serial.println(F("Before using 9DOF,we need to calibrate the gyroscope frist,It will takes about 2 minutes."));
-    Serial.print("  ");
-    Serial.println(F("During  calibratting ,you should rotate and turn the 9DOF all the time within 2 minutes."));
-    Serial.print("  ");
-    Serial.println(F("If you are ready ,please sent a command data 'ready' to start sample and calibrate."));
-    while (!Serial.find("ready"));
-    Serial.println("  ");
-    Serial.println("ready");
-    Serial.println("Sample starting......");
-    Serial.println("waiting ......");
-
     calibrate_gyroscope();
 
     Serial.println("     ");
@@ -414,11 +412,11 @@ void calibrate_accelerometer() {
 
     // Collect samples
     for (int i = 0; i < sample_num_adate; i++) {
-        Serial.println(i);
         getRawAccel_Data();
         ax_samples[i] = Axyz[0];
         ay_samples[i] = Axyz[1];
         az_samples[i] = Axyz[2];
+        delay(100);
     }
 
     // Calculate mean and standard deviation for each axis
@@ -439,7 +437,7 @@ void calibrate_accelerometer() {
     // Calculate the final mean for each axis
     ax_centre = calculate_median(ax_filtered, ax_filtered_size);
     ay_centre = calculate_median(ay_filtered, ay_filtered_size);
-    az_centre = calculate_median(az_filtered, az_filtered_size);
+    az_centre = calculate_median(az_filtered, az_filtered_size) - 1.0;
 
     // Print the results
     Serial.print("Calibration Results: ");
@@ -459,11 +457,11 @@ void calibrate_gyroscope() {
 
     // Collect samples
     for (int i = 0; i < sample_num_adate; i++) {
-        Serial.println(i);
         getRawGyro_Data();
-        gx_samples[i] = Axyz[0];
-        gy_samples[i] = Axyz[1];
-        gz_samples[i] = Axyz[2];
+        gx_samples[i] = Gxyz[0];
+        gy_samples[i] = Gxyz[1];
+        gz_samples[i] = Gxyz[2];
+        delay(100);
     }
 
     // Calculate mean and standard deviation for each axis
@@ -516,13 +514,13 @@ void getAccel_Data(void) {
     float rawGz = (double) gz * 250 / 32768;
 
     // Apply Kalman filter to each axis
-    Axyz[0] = kalmanFilter(0, rawAx, rawGx, dt); // Filtered X-axis
-    Axyz[1] = kalmanFilter(1, rawAy, rawGy, dt); // Filtered Y-axis
-    Axyz[2] = kalmanFilter(2, rawAz, rawGz, dt); // Filtered Z-axis
+    // Axyz[0] = kalmanFilter(0, rawAx, rawGx, dt); // Filtered X-axis
+    // Axyz[1] = kalmanFilter(1, rawAy, rawGy, dt); // Filtered Y-axis
+    // Axyz[2] = kalmanFilter(2, rawAz, rawGz, dt); // Filtered Z-axis
 
-    //Axyz[0] = rawAx;
-    //Axyz[1] = rawAy;
-    //Axyz[2] = rawAz;
+    Axyz[0] = rawAx;
+    Axyz[1] = rawAy;
+    Axyz[2] = rawAz;
 }
 
 
