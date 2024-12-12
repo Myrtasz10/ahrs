@@ -51,53 +51,54 @@ static float mx_centre = 0;
 static float my_centre = 0;
 static float mz_centre = 0;
 
-// Kalman filter variables for each axis
-float accelEstimateX = 0.0, accelEstimateY = 0.0, accelEstimateZ = 0.0;
-float accelErrorEstimateX = 1.0, accelErrorEstimateY = 1.0, accelErrorEstimateZ = 1.0;
-float accelErrorMeasureX = 0.1, accelErrorMeasureY = 0.1, accelErrorMeasureZ = 0.1; // Initial error in measurement, tune this
-float kalmanGainX = 0.0, kalmanGainY = 0.0, kalmanGainZ = 0.0;
-
-float gyroEstimateX = 0.0, gyroEstimateY = 0.0, gyroEstimateZ = 0.0; // Gyro estimates
-float gyroErrorEstimateX = 1.0, gyroErrorEstimateY = 1.0, gyroErrorEstimateZ = 1.0; // Error estimates for gyro
-float kalmanGainGyroX = 0.0, kalmanGainGyroY = 0.0, kalmanGainGyroZ = 0.0; // Kalman gains for gyro
+static float xn = 0;
+static float xe = 0;
+static float yn = 0;
+static float ye = 0;
 
 
-float temperature;
-float pressure;
-float atm;
-float altitude;
+//faulty Kalman filter
+// // Kalman filter variables for each axis
+// float accelEstimateX = 0.0, accelEstimateY = 0.0, accelEstimateZ = 0.0;
+// float accelErrorEstimateX = 1.0, accelErrorEstimateY = 1.0, accelErrorEstimateZ = 1.0;
+// float accelErrorMeasureX = 0.1, accelErrorMeasureY = 0.1, accelErrorMeasureZ = 0.1; // Initial error in measurement, tune this
+// float kalmanGainX = 0.0, kalmanGainY = 0.0, kalmanGainZ = 0.0;
 
-// Kalman filter variables per axis
-struct KalmanAxis {
-    float state;         // Current angle estimate
-    float uncertainty;   // Estimate uncertainty
-    float gyroBias;      // Corrected gyro bias
-};
+// float gyroEstimateX = 0.0, gyroEstimateY = 0.0, gyroEstimateZ = 0.0; // Gyro estimates
+// float gyroErrorEstimateX = 1.0, gyroErrorEstimateY = 1.0, gyroErrorEstimateZ = 1.0; // Error estimates for gyro
+// float kalmanGainGyroX = 0.0, kalmanGainGyroY = 0.0, kalmanGainGyroZ = 0.0; // Kalman gains for gyro
 
-KalmanAxis kalman[3]; // Indices 0 = Roll, 1 = Pitch, 2 = Yaw
+// // Kalman filter variables per axis
+// struct KalmanAxis {
+//     float state;         // Current angle estimate
+//     float uncertainty;   // Estimate uncertainty
+//     float gyroBias;      // Corrected gyro bias
+// };
 
-// Kalman filter function for one axis
-float kalmanFilter(int axis, float gyroRate, float accelAngle, float dt) {
-    // Unpack the axis state
-    float &state = kalman[axis].state;
-    float &uncertainty = kalman[axis].uncertainty;
-    float &gyroBias = kalman[axis].gyroBias;
+// KalmanAxis kalman[3]; // Indices 0 = Roll, 1 = Pitch, 2 = Yaw
 
-    // Tuning parameters
-    const float processNoise = 0.02;   // System noise (gyro)
-    const float measurementNoise = 0.02; // Measurement noise (accelerometer)
+// // Kalman filter function for one axis
+// float kalmanFilter(int axis, float gyroRate, float accelAngle, float dt) {
+//     // Unpack the axis state
+//     float &state = kalman[axis].state;
+//     float &uncertainty = kalman[axis].uncertainty;
+//     float &gyroBias = kalman[axis].gyroBias;
 
-    // 1. Prediction Step
-    state += dt * (gyroRate - gyroBias);  // Predict the next angle based on gyro rate
-    uncertainty += processNoise * dt;    // Increase uncertainty
+//     // Tuning parameters
+//     const float processNoise = 0.02;   // System noise (gyro)
+//     const float measurementNoise = 0.02; // Measurement noise (accelerometer)
 
-    // 2. Update Step
-    float kalmanGain = uncertainty / (uncertainty + measurementNoise);
-    state += kalmanGain * (accelAngle - state); // Update estimate using accelerometer
-    uncertainty *= (1 - kalmanGain);           // Update uncertainty
+//     // 1. Prediction Step
+//     state += dt * (gyroRate - gyroBias);  // Predict the next angle based on gyro rate
+//     uncertainty += processNoise * dt;    // Increase uncertainty
 
-    return state; // Return filtered value
-}
+//     // 2. Update Step
+//     float kalmanGain = uncertainty / (uncertainty + measurementNoise);
+//     state += kalmanGain * (accelAngle - state); // Update estimate using accelerometer
+//     uncertainty *= (1 - kalmanGain);           // Update uncertainty
+
+//     return state; // Return filtered value
+// }
 
 void setup()
 {
@@ -150,9 +151,7 @@ void loop()
     // Serial.println(mz_centre);
     // Serial.println("     ");
 
-    Displacementxyz[0] += Axyz[0] * dt;
-    Displacementxyz[1] += Axyz[1] * dt;
-    Displacementxyz[2] += (Axyz[2]-1.0) * dt;
+
 
     Serial.println("Acceleration(g) of X,Y,Z:");
     Serial.print(Axyz[0]);
@@ -160,13 +159,6 @@ void loop()
     Serial.print(Axyz[1]);
     Serial.print(",");
     Serial.println(Axyz[2]);
-
-    Serial.println("Displacement(g) of X,Y,Z:");
-    Serial.print(Displacementxyz[0]);
-    Serial.print(",");
-    Serial.print(Displacementxyz[1]);
-    Serial.print(",");
-    Serial.println(Displacementxyz[2]);
 
     Serial.println("Gyro(degress/s) of X,Y,Z:");
     Serial.print(Gxyz[0]);
@@ -179,18 +171,41 @@ void loop()
     Serial.println(pitch);
     Serial.print("Roll: ");
     Serial.println(roll);
-    // Serial.println("Compass Value of X,Y,Z:");
-    // Serial.print(Mxyz[0]);
-    // Serial.print(",");
-    // Serial.print(Mxyz[1]);
-    // Serial.print(",");
-    // Serial.println(Mxyz[2]);
-    // Serial.println("The clockwise angle between the magnetic north and X-Axis:");
-    // Serial.print(heading);
-    // Serial.println(" ");
-    // Serial.println("The clockwise angle between the magnetic north and the projection of the positive X-Axis in the horizontal plane:");
-    // Serial.println(tiltheading);
-    // Serial.println("   ");
+    Serial.println("Compass Value of X,Y,Z:");
+    Serial.print(Mxyz[0]);
+    Serial.print(",");
+    Serial.print(Mxyz[1]);
+    Serial.print(",");
+    Serial.println(Mxyz[2]);
+    Serial.println("The clockwise angle between the magnetic north and X-Axis:");
+    Serial.print(heading);
+    Serial.println(" ");
+    Serial.println("The clockwise angle between the magnetic north and the projection of the positive X-Axis in the horizontal plane:");
+    Serial.println(tiltheading);
+    Serial.println("   ");
+
+    float x = Axyz[0] * dt;
+    float y = Axyz[1] * dt;
+
+    xe = x*sin(tiltheading);
+    xn = x*cos(tiltheading);
+    yn = y*sin(tiltheading);
+    ye = y*cos(tiltheading);
+
+
+    Displacementxyz[0] = xn-yn;
+    Displacementxyz[1] = xe+ye;
+    Displacementxyz[2] += (Axyz[2]-1.0) * dt;
+
+    Serial.println("Displacement(g) of X,Y,Z:");
+    Serial.print(Displacementxyz[0]);
+    Serial.print(",");
+    Serial.print(Displacementxyz[1]);
+    Serial.print(",");
+    Serial.println(Displacementxyz[2]);
+
+
+
 
     // temperature = barometer.bmp180GetTemperature(barometer.bmp180ReadUT()); //Get the temperature, bmp180ReadUT MUST be called first
     // pressure = barometer.bmp180GetPressure(barometer.bmp180ReadUP());//Get the temperature
