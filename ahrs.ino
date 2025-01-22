@@ -67,42 +67,54 @@ float gyroEstimateX = 0.0, gyroEstimateY = 0.0, gyroEstimateZ = 0.0; // Gyro est
 float gyroErrorEstimateX = 1.0, gyroErrorEstimateY = 1.0, gyroErrorEstimateZ = 1.0; // Error estimates for gyro
 float kalmanGainGyroX = 0.0, kalmanGainGyroY = 0.0, kalmanGainGyroZ = 0.0; // Kalman gains for gyro
 
-// Kalman filter variables per axis
-struct KalmanAxis {
-    float state;         // Current angle estimate
-    float uncertainty;   // Estimate uncertainty
-    float gyroBias;      // Corrected gyro bias
-};
+// // Kalman filter variables per axis
+// struct KalmanAxis {
+//     float state;         // Current angle estimate
+//     float uncertainty;   // Estimate uncertainty
+//     float gyroBias;      // Corrected gyro bias
+// };
 
-KalmanAxis kalman[3]; // Indices 0 = Roll, 1 = Pitch, 2 = Yaw
+// KalmanAxis kalman[3]; // Indices 0 = Roll, 1 = Pitch, 2 = Yaw
 
-// Kalman filter function for one axis
-float kalmanFilter(int axis, float gyroRate, float accelAngle, float dt) {
-    // Unpack the axis state
-    float &state = kalman[axis].state;
-    float &uncertainty = kalman[axis].uncertainty;
-    float &gyroBias = kalman[axis].gyroBias;
+// // Kalman filter function for one axis
+// float kalmanFilter(int axis, float gyroRate, float accelAngle, float dt) {
 
-    // Tuning parameters
-    const float processNoise = 0.02;   // System noise (gyro)
-    const float measurementNoise = 0.02; // Measurement noise (accelerometer)
+//     // Unpack the axis state
+//     float &previousState = kalman[axis].state;
+//     float &previousUncertainty = kalman[axis].uncertainty;
+//     float &gyroBias = kalman[axis].gyroBias;
 
-    // 1. Prediction Step
-    state += dt * (gyroRate - gyroBias);  // Predict the next angle based on gyro rate
-    uncertainty += processNoise * dt;    // Increase uncertainty
+//     //1. Predict the current state of the system:
+//     float currentState = previousState + dt * gyroRate;
 
-    // 2. Update Step
-    float kalmanGain = uncertainty / (uncertainty + measurementNoise);
-    state += kalmanGain * (accelAngle - state); // Update estimate using accelerometer
-    uncertainty *= (1 - kalmanGain);           // Update uncertainty
+//     //2. Calculate the uncertainty of the prediction:
+//     float currentUncertainty = previousUncertainty + dt * dt * 4 * 4; //16 = 4^2 = standard deviation of the rotation rate measurement error
 
-    return state; // Return filtered value
-}
+//     //3. Calculate the Kalman gain from the uncertainties on the predictions and measurements:
+//     float KalmanGain = currentUncertainty * 1/(1*KalmanUncertainty + 3 * 3);
+
+//     //4. Update the predicted state of the system with the measurement of the state through the Kalman gain:
+//     currentState = currentState + KalmanGain * (accelAngle - currentState);
+
+//     // Tuning parameters
+//     const float processNoise = 0.02;   // System noise (gyro)
+//     const float measurementNoise = 0.02; // Measurement noise (accelerometer)
+
+//     // 1. Prediction Step
+//     state += dt * (gyroRate - gyroBias);  // Predict the next angle based on gyro rate
+//     uncertainty += processNoise * dt;    // Increase uncertainty
+
+//     // 2. Update Step
+//     float kalmanGain = uncertainty / (uncertainty + measurementNoise);
+//     state += kalmanGain * (accelAngle - state); // Update estimate using accelerometer
+//     uncertainty *= (1 - kalmanGain);           // Update uncertainty
+
+//     return state; // Return filtered value
+// }
 
 float RateRoll, RatePitch, RateYaw;
 float RateCalibrationRoll, RateCalibrationPitch, RateCalibrationYaw;
 int RateCalibrationNumber;
-float AccX, AccY, AccZ;
 float AngleRoll, AnglePitch;
 uint32_t LoopTimer;
 float KalmanAngleRoll=0, 
@@ -111,12 +123,19 @@ float KalmanAnglePitch=0,
 KalmanUncertaintyAnglePitch=2*2;
 float Kalman1DOutput[]={0,0};
 
-void kalman_1d(float KalmanState, float KalmanUncertainty, float KalmanInput, float KalmanMeasurement) {
-  KalmanState=KalmanState+0.004*KalmanInput;
-  KalmanUncertainty=KalmanUncertainty + 0.004 * 0.004 * 4 * 4;
+void kalman_1d(float KalmanState, float KalmanUncertainty, float KalmanInput, float KalmanMeasurement, float dt) {
+
+  KalmanState=KalmanState+dt*KalmanInput;
+
+  KalmanUncertainty=KalmanUncertainty + dt * dt * 4 * 4;
+
   float KalmanGain=KalmanUncertainty * 1/(1*KalmanUncertainty + 3 * 3);
+
+  Serial.print(KalmanGain);
+
   KalmanState=KalmanState+KalmanGain * (KalmanMeasurement-KalmanState);
   KalmanUncertainty=(1-KalmanGain) * KalmanUncertainty;
+
   Kalman1DOutput[0]=KalmanState; 
   Kalman1DOutput[1]=KalmanUncertainty;
 }
@@ -157,14 +176,26 @@ float dt = 0.0;
 
 void loop()
 {
-    RateRoll-=RateCalibrationRoll;
-    RatePitch-=RateCalibrationPitch;
-    RateYaw-=RateCalibrationYaw;
+    currentTime = millis();          // Get the current time
+    dt = (currentTime - lastTime) / 1000.0;  // Time difference in seconds
+    lastTime = currentTime;                        // Update the last time
 
-    kalman_1d(KalmanAngleRoll, KalmanUncertaintyAngleRoll, RateRoll, AngleRoll);
+    getAccel_Data();
+    getGyro_Data();
+    getCompassDate_calibrated(); 
+    getHeading();
+    getTiltHeading();
+
+    AngleRoll=atan(Axyz[1]/sqrt(Axyz[0]*Axyz[0]+Axyz[2]*Axyz[2]))*1/(3.142/180);
+    AnglePitch=-atan(Axyz[0]/sqrt(Axyz[1]*Axyz[1]+Axyz[2]*Axyz[2]))*1/(3.142/180);
+
+    RateRoll=Gxyz[0];
+    RatePitch=Gxyz[1];
+
+    kalman_1d(KalmanAngleRoll, KalmanUncertaintyAngleRoll, RateRoll, AngleRoll, dt);
     KalmanAngleRoll=Kalman1DOutput[0]; 
     KalmanUncertaintyAngleRoll=Kalman1DOutput[1];
-    kalman_1d(KalmanAnglePitch, KalmanUncertaintyAnglePitch, RatePitch, AnglePitch);
+    kalman_1d(KalmanAnglePitch, KalmanUncertaintyAnglePitch, RatePitch, AnglePitch, dt);
     KalmanAnglePitch=Kalman1DOutput[0]; 
     KalmanUncertaintyAnglePitch=Kalman1DOutput[1];
     Serial.print("Roll Angle [°] ");
@@ -172,25 +203,13 @@ void loop()
     Serial.print(" Pitch Angle [°] ");
     Serial.println(KalmanAnglePitch);
 
-    // currentTime = millis();          // Get the current time
-    // dt = (currentTime - lastTime) / 1000.0;  // Time difference in seconds
-    // lastTime = currentTime;                        // Update the last time
-
-    // getAccel_Data();
-    // getGyro_Data();
-    // getCompassDate_calibrated(); 
-    // getHeading();
-    // getTiltHeading();
-
-    // // Serial.println("calibration parameter: ");
-    // // Serial.print(mx_centre);
-    // // Serial.print("         ");
-    // // Serial.print(my_centre);
-    // // Serial.print("         ");
-    // // Serial.println(mz_centre);
-    // // Serial.println("     ");
-
-
+    // Serial.println("calibration parameter: ");
+    // Serial.print(mx_centre);
+    // Serial.print("         ");
+    // Serial.print(my_centre);
+    // Serial.print("         ");
+    // Serial.println(mz_centre);
+    // Serial.println("     ");
 
     // Serial.println("Acceleration(g) of X,Y,Z:");
     // Serial.print(Axyz[0]);
@@ -267,8 +286,6 @@ void loop()
     // Serial.println(" m");
 
     Serial.println();
-    delay(500);
-
 }
 
 
@@ -563,14 +580,14 @@ void getAccel_Data(void) {
     float rawAy = ((double) ay / 16384) - ay_centre;
     float rawAz = ((double) az / 16384) - az_centre;
 
-    float rawGx = (double) gx * 250 / 32768;
-    float rawGy = (double) gy * 250 / 32768;
-    float rawGz = (double) gz * 250 / 32768;
+    // float rawGx = (double) gx * 250 / 32768;
+    // float rawGy = (double) gy * 250 / 32768;
+    // float rawGz = (double) gz * 250 / 32768;
 
     // Apply Kalman filter to each axis
-     Axyz[0] = kalmanFilter(0, rawAx, rawGx, dt); // Filtered X-axis
-     Axyz[1] = kalmanFilter(1, rawAy, rawGy, dt); // Filtered Y-axis
-     Axyz[2] = kalmanFilter(2, rawAz, rawGz, dt); // Filtered Z-axis
+    //  Axyz[0] = kalmanFilter(0, rawAx, rawGx, dt); // Filtered X-axis
+    //  Axyz[1] = kalmanFilter(1, rawAy, rawGy, dt); // Filtered Y-axis
+    //  Axyz[2] = kalmanFilter(2, rawAz, rawGz, dt); // Filtered Z-axis
 
     Axyz[0] = rawAx;
     Axyz[1] = rawAy;
