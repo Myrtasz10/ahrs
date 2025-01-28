@@ -11,7 +11,8 @@
 // specific I2C addresses may be passed as a parameter here
 // AD0 low = 0x68 (default for InvenSense evaluation board)
 // AD0 high = 0x69
-MPU9250 accelgyro(0x69);
+//MPU9250 accelgyro_1(0x68);
+MPU9250 accelgyro_2(0x69);
 I2Cdev   I2C_M;
 
 uint8_t buffer_m[6];
@@ -51,66 +52,24 @@ static float mx_centre = 0;
 static float my_centre = 0;
 static float mz_centre = 0;
 
+float speed_x = 0;
+float speed_y = 0;
+
 static float xn = 0;
 static float xe = 0;
 static float yn = 0;
 static float ye = 0;
 
 
-// Kalman filter variables for each axis
-float accelEstimateX = 0.0, accelEstimateY = 0.0, accelEstimateZ = 0.0;
-float accelErrorEstimateX = 1.0, accelErrorEstimateY = 1.0, accelErrorEstimateZ = 1.0;
-float accelErrorMeasureX = 0.1, accelErrorMeasureY = 0.1, accelErrorMeasureZ = 0.1; // Initial error in measurement, tune this
-float kalmanGainX = 0.0, kalmanGainY = 0.0, kalmanGainZ = 0.0;
+// // Kalman filter variables for each axis
+// float accelEstimateX = 0.0, accelEstimateY = 0.0, accelEstimateZ = 0.0;
+// float accelErrorEstimateX = 1.0, accelErrorEstimateY = 1.0, accelErrorEstimateZ = 1.0;
+// float accelErrorMeasureX = 0.1, accelErrorMeasureY = 0.1, accelErrorMeasureZ = 0.1; // Initial error in measurement, tune this
+// float kalmanGainX = 0.0, kalmanGainY = 0.0, kalmanGainZ = 0.0;
 
-float gyroEstimateX = 0.0, gyroEstimateY = 0.0, gyroEstimateZ = 0.0; // Gyro estimates
-float gyroErrorEstimateX = 1.0, gyroErrorEstimateY = 1.0, gyroErrorEstimateZ = 1.0; // Error estimates for gyro
-float kalmanGainGyroX = 0.0, kalmanGainGyroY = 0.0, kalmanGainGyroZ = 0.0; // Kalman gains for gyro
-
-// // Kalman filter variables per axis
-// struct KalmanAxis {
-//     float state;         // Current angle estimate
-//     float uncertainty;   // Estimate uncertainty
-//     float gyroBias;      // Corrected gyro bias
-// };
-
-// KalmanAxis kalman[3]; // Indices 0 = Roll, 1 = Pitch, 2 = Yaw
-
-// // Kalman filter function for one axis
-// float kalmanFilter(int axis, float gyroRate, float accelAngle, float dt) {
-
-//     // Unpack the axis state
-//     float &previousState = kalman[axis].state;
-//     float &previousUncertainty = kalman[axis].uncertainty;
-//     float &gyroBias = kalman[axis].gyroBias;
-
-//     //1. Predict the current state of the system:
-//     float currentState = previousState + dt * gyroRate;
-
-//     //2. Calculate the uncertainty of the prediction:
-//     float currentUncertainty = previousUncertainty + dt * dt * 4 * 4; //16 = 4^2 = standard deviation of the rotation rate measurement error
-
-//     //3. Calculate the Kalman gain from the uncertainties on the predictions and measurements:
-//     float KalmanGain = currentUncertainty * 1/(1*KalmanUncertainty + 3 * 3);
-
-//     //4. Update the predicted state of the system with the measurement of the state through the Kalman gain:
-//     currentState = currentState + KalmanGain * (accelAngle - currentState);
-
-//     // Tuning parameters
-//     const float processNoise = 0.02;   // System noise (gyro)
-//     const float measurementNoise = 0.02; // Measurement noise (accelerometer)
-
-//     // 1. Prediction Step
-//     state += dt * (gyroRate - gyroBias);  // Predict the next angle based on gyro rate
-//     uncertainty += processNoise * dt;    // Increase uncertainty
-
-//     // 2. Update Step
-//     float kalmanGain = uncertainty / (uncertainty + measurementNoise);
-//     state += kalmanGain * (accelAngle - state); // Update estimate using accelerometer
-//     uncertainty *= (1 - kalmanGain);           // Update uncertainty
-
-//     return state; // Return filtered value
-// }
+// float gyroEstimateX = 0.0, gyroEstimateY = 0.0, gyroEstimateZ = 0.0; // Gyro estimates
+// float gyroErrorEstimateX = 1.0, gyroErrorEstimateY = 1.0, gyroErrorEstimateZ = 1.0; // Error estimates for gyro
+// float kalmanGainGyroX = 0.0, kalmanGainGyroY = 0.0, kalmanGainGyroZ = 0.0; // Kalman gains for gyro
 
 float RateRoll, RatePitch, RateYaw;
 float RateCalibrationRoll, RateCalibrationPitch, RateCalibrationYaw;
@@ -130,8 +89,6 @@ void kalman_1d(float KalmanState, float KalmanUncertainty, float KalmanInput, fl
   KalmanUncertainty=KalmanUncertainty + dt * dt * 4 * 4;
 
   float KalmanGain=KalmanUncertainty * 1/(1*KalmanUncertainty + 3 * 3);
-
-  Serial.print(KalmanGain);
 
   KalmanState=KalmanState+KalmanGain * (KalmanMeasurement-KalmanState);
   KalmanUncertainty=(1-KalmanGain) * KalmanUncertainty;
@@ -155,18 +112,20 @@ void setup()
 
     // initialize device
     Serial.println("Initializing I2C devices...");
-    accelgyro.initialize();
+    //accelgyro_1.initialize();
+    accelgyro_2.initialize();
 
     // verify connection
     Serial.println("Testing device connections...");
-    Serial.println(accelgyro.testConnection() ? "MPU9250 connection successful" : "MPU9250 connection failed");
+    //Serial.println(accelgyro_1.testConnection() ? "[1] MPU9250 connection successful" : "[1] MPU9250 connection failed");
+    Serial.println(accelgyro_2.testConnection() ? "[2] MPU9250 connection successful" : "[2] MPU9250 connection failed");
 
     delay(1000);
     Serial.println("     ");
 
-    Axyz_init_calibrated();
-    Gxyz_init_calibrated();
-    //Mxyz_init_calibrated();
+    Axyz_init_calibrated(accelgyro_2);
+    Gxyz_init_calibrated(accelgyro_2);
+    Mxyz_init_calibrated(accelgyro_2);
 
 }
 
@@ -180,9 +139,9 @@ void loop()
     dt = (currentTime - lastTime) / 1000.0;  // Time difference in seconds
     lastTime = currentTime;                        // Update the last time
 
-    getAccel_Data();
-    getGyro_Data();
-    getCompassDate_calibrated(); 
+    getAccel_Data(accelgyro_2);
+    getGyro_Data(accelgyro_2);
+    getCompassDate_calibrated(accelgyro_2);
     getHeading();
     getTiltHeading();
 
@@ -211,19 +170,19 @@ void loop()
     // Serial.println(mz_centre);
     // Serial.println("     ");
 
-    // Serial.println("Acceleration(g) of X,Y,Z:");
-    // Serial.print(Axyz[0]);
-    // Serial.print(",");
-    // Serial.print(Axyz[1]);
-    // Serial.print(",");
-    // Serial.println(Axyz[2]);
+    Serial.println("Acceleration(g) of X,Y,Z:");
+    Serial.print(Axyz[0]);
+    Serial.print(",");
+    Serial.print(Axyz[1]);
+    Serial.print(",");
+    Serial.println(Axyz[2]);
 
-    // Serial.println("Gyro(degress/s) of X,Y,Z:");
-    // Serial.print(Gxyz[0]);
-    // Serial.print(",");
-    // Serial.print(Gxyz[1]);
-    // Serial.print(",");
-    // Serial.println(Gxyz[2]);
+    Serial.println("Gyro(degress/s) of X,Y,Z:");
+    Serial.print(Gxyz[0]);
+    Serial.print(",");
+    Serial.print(Gxyz[1]);
+    Serial.print(",");
+    Serial.println(Gxyz[2]);
 
     // Serial.print("Pitch: ");
     // Serial.println(pitch);
@@ -242,51 +201,35 @@ void loop()
     // Serial.println(tiltheading);
     // Serial.println("   ");
 
-    // float x = Axyz[0] * dt;
-    // float y = Axyz[1] * dt;
+    // float radTiltHeading = tiltHeading / 180 * 3.142;
+    // float radRoll = KalmanAngleRoll / 180 * 3.142;
+    // float radPitch = KalmanAnglePitch / 180 * 3.142;
 
-    // xe = x*sin(tiltheading);
-    // xn = x*cos(tiltheading);
-    // yn = y*sin(tiltheading);
-    // ye = y*cos(tiltheading);
+    // speed_x += (Axyz[0]) * dt;
+    // speed_y += (Axyz[1]) * dt;
+
+    // xe = speed_x*sin(radTiltHeading);
+    // xn = speed_x*cos(radTiltHeading);
+    // yn = speed_y*sin(radTiltHeading);
+    // ye = speed_y*cos(radTiltHeading);
 
 
-    // Displacementxyz[0] += (xn-yn);
-    // Displacementxyz[1] += (xe+ye);
-    // Displacementxyz[2] += (Axyz[2]-1.0) * dt;
+    // Displacementxyz[0] += (xn-yn)*dt;
+    // Displacementxyz[1] += (xe+ye)*dt;
+    // //Displacementxyz[2] += (Axyz[2]-1.0) * dt;
 
-    // Serial.println("Displacement(g) of X,Y,Z:");
+    // Serial.println("Displacement(g) of X,Y:");
     // Serial.print(Displacementxyz[0]);
     // Serial.print(",");
     // Serial.print(Displacementxyz[1]);
-    // Serial.print(",");
-    // Serial.println(Displacementxyz[2]);
-
-
-
-
-    // temperature = barometer.bmp180GetTemperature(barometer.bmp180ReadUT()); //Get the temperature, bmp180ReadUT MUST be called first
-    // pressure = barometer.bmp180GetPressure(barometer.bmp180ReadUP());//Get the temperature
-    // altitude = barometer.calcAltitude(pressure); //Uncompensated caculation - in Meters
-    // atm = pressure / 101325;
-
-    // Serial.print("Temperature: ");
-    // Serial.print(temperature, 2); //display 2 decimal places
-    // Serial.println("deg C");
-
-    // Serial.print("Pressure: ");
-    // Serial.print(pressure, 0); //whole number only.
-    // Serial.println(" Pa");
-
-    // Serial.print("Ralated Atmosphere: ");
-    // Serial.println(atm, 4); //display 4 decimal places
-
-    // Serial.print("Altitude: ");
-    // Serial.print(altitude, 2); //display 2 decimal places
-    // Serial.println(" m");
 
     Serial.println();
 }
+
+
+/*
+MAGNETOMETER READING
+*/
 
 
 void getHeading(void)
@@ -308,34 +251,13 @@ void getTiltHeading(void)
 }
 
 
-void Mxyz_init_calibrated ()
-{
 
-    Serial.println(F("Before using 9DOF,we need to calibrate the compass frist,It will takes about 2 minutes."));
-    Serial.print("  ");
-    Serial.println(F("During  calibratting ,you should rotate and turn the 9DOF all the time within 2 minutes."));
-    Serial.print("  ");
-    Serial.println(F("If you are ready ,please sent a command data 'ready' to start sample and calibrate."));
-    while (!Serial.find("ready"));
-    Serial.println("  ");
-    Serial.println("ready");
-    Serial.println("Sample starting......");
-    Serial.println("waiting ......");
-
-    calibrate_magnetometer();
-
-    Serial.println("     ");
-    Serial.println("compass calibration parameter ");
-    Serial.print(mx_centre);
-    Serial.print("     ");
-    Serial.print(my_centre);
-    Serial.print("     ");
-    Serial.println(mz_centre);
-    Serial.println("    ");
-}
+/*
+CALIBRATION
+*/
 
 
-void Axyz_init_calibrated ()
+void Axyz_init_calibrated (MPU9250 accelgyro)
 {
 
     Serial.println(F("Before using 9DOF,we need to calibrate the accelerometer frist,It will takes about 2 minutes."));
@@ -349,7 +271,7 @@ void Axyz_init_calibrated ()
     Serial.println("Sample starting......");
     Serial.println("waiting ......");
 
-    calibrate_accelerometer();
+    calibrate_accelerometer(accelgyro);
 
     Serial.println("     ");
     Serial.println("accelerometer calibration parameter ");
@@ -361,12 +283,58 @@ void Axyz_init_calibrated ()
     Serial.println("    ");
 }
 
-void Gxyz_init_calibrated ()
+void calibrate_accelerometer(MPU9250 accelgyro) {
+
+    float ax_samples[sample_num_adate];
+    float ay_samples[sample_num_adate];
+    float az_samples[sample_num_adate];
+
+    // Collect samples
+    for (int i = 0; i < sample_num_adate; i++) {
+        getRawAccel_Data(accelgyro);
+        ax_samples[i] = Axyz[0];
+        ay_samples[i] = Axyz[1];
+        az_samples[i] = Axyz[2];
+        delay(100);
+    }
+
+    // Calculate mean and standard deviation for each axis
+    float ax_mean = calculate_mean(ax_samples, sample_num_adate);
+    float ay_mean = calculate_mean(ay_samples, sample_num_adate);
+    float az_mean = calculate_mean(az_samples, sample_num_adate);
+
+    float ax_stddev = calculate_stddev(ax_samples, sample_num_adate, ax_mean);
+    float ay_stddev = calculate_stddev(ay_samples, sample_num_adate, ay_mean);
+    float az_stddev = calculate_stddev(az_samples, sample_num_adate, az_mean);
+
+    // Filter outliers
+    float ax_filtered[sample_num_mdate], ay_filtered[sample_num_mdate], az_filtered[sample_num_mdate];
+    int ax_filtered_size = filter_outliers(ax_samples, sample_num_mdate, ax_mean, ax_stddev, ax_filtered);
+    int ay_filtered_size = filter_outliers(ay_samples, sample_num_mdate, ay_mean, ay_stddev, ay_filtered);
+    int az_filtered_size = filter_outliers(az_samples, sample_num_mdate, az_mean, az_stddev, az_filtered);
+
+    // Calculate the final mean for each axis
+    ax_centre = calculate_median(ax_filtered, ax_filtered_size);
+    ay_centre = calculate_median(ay_filtered, ay_filtered_size);
+    az_centre = calculate_median(az_filtered, az_filtered_size) - 1.0;
+
+    // Print the results
+    Serial.print("Calibration Results: ");
+    Serial.print("ax_centre: ");
+    Serial.print(ax_centre);
+    Serial.print(" ay_centre: ");
+    Serial.print(ay_centre);
+    Serial.print(" az_centre: ");
+    Serial.println(az_centre);
+}
+
+
+void Gxyz_init_calibrated (MPU9250 accelgyro)
 {
-    calibrate_gyroscope();
+    calibrate_gyroscope(accelgyro);
 
     Serial.println("     ");
-    Serial.println("accelerometer gyroscope parameter ");
+    Serial.println("gyroscope calibration parameter ");
     Serial.print(gx_centre);
     Serial.print("     ");
     Serial.print(gy_centre);
@@ -374,6 +342,185 @@ void Gxyz_init_calibrated ()
     Serial.println(gz_centre);
     Serial.println("    ");
 }
+
+void calibrate_gyroscope(MPU9250 accelgyro) {
+
+    float gx_samples[sample_num_gdate];
+    float gy_samples[sample_num_gdate];
+    float gz_samples[sample_num_gdate];
+
+    // Collect samples
+    for (int i = 0; i < sample_num_adate; i++) {
+        getRawGyro_Data(accelgyro);
+        gx_samples[i] = Gxyz[0];
+        gy_samples[i] = Gxyz[1];
+        gz_samples[i] = Gxyz[2];
+        delay(100);
+    }
+
+    // Calculate mean and standard deviation for each axis
+    float gx_mean = calculate_mean(gx_samples, sample_num_adate);
+    float gy_mean = calculate_mean(gy_samples, sample_num_adate);
+    float gz_mean = calculate_mean(gz_samples, sample_num_adate);
+
+    float gx_stddev = calculate_stddev(gx_samples, sample_num_adate, gx_mean);
+    float gy_stddev = calculate_stddev(gy_samples, sample_num_adate, gy_mean);
+    float gz_stddev = calculate_stddev(gz_samples, sample_num_adate, gz_mean);
+
+    // Filter outliers
+    float gx_filtered[sample_num_mdate], gy_filtered[sample_num_mdate], gz_filtered[sample_num_mdate];
+    int gx_filtered_size = filter_outliers(gx_samples, sample_num_mdate, gx_mean, gx_stddev, gx_filtered);
+    int gy_filtered_size = filter_outliers(gy_samples, sample_num_mdate, gy_mean, gy_stddev, gy_filtered);
+    int gz_filtered_size = filter_outliers(gz_samples, sample_num_mdate, gz_mean, gz_stddev, gz_filtered);
+
+    // Calculate the final mean for each axis
+    gx_centre = calculate_median(gx_filtered, gx_filtered_size);
+    gy_centre = calculate_median(gy_filtered, gy_filtered_size);
+    gz_centre = calculate_median(gz_filtered, gz_filtered_size);
+
+    // Print the results
+    Serial.print("Calibration Results: ");
+    Serial.print("gx_centre: ");
+    Serial.print(gx_centre);
+    Serial.print(" gy_centre: ");
+    Serial.print(gy_centre);
+    Serial.print(" gz_centre: ");
+    Serial.println(gz_centre);
+}
+
+void Mxyz_init_calibrated (MPU9250 accelgyro)
+{
+
+    calibrate_magnetometer(accelgyro);
+
+    Serial.println("     ");
+    Serial.println("compass calibration parameter ");
+    Serial.print(mx_centre);
+    Serial.print("     ");
+    Serial.print(my_centre);
+    Serial.print("     ");
+    Serial.println(mz_centre);
+    Serial.println("    ");
+}
+
+void calibrate_magnetometer(MPU9250 accelgyro) {
+    float mx_samples[sample_num_mdate];
+    float my_samples[sample_num_mdate];
+    float mz_samples[sample_num_mdate];
+
+    // Collect samples
+    for (int i = 0; i < sample_num_mdate; i++) {
+        getCompass_Data(accelgyro);
+        mx_samples[i] = Mxyz[0];
+        my_samples[i] = Mxyz[1];
+        mz_samples[i] = Mxyz[2];
+    }
+
+    // Calculate mean and standard deviation for each axis
+    float mx_mean = calculate_mean(mx_samples, sample_num_mdate);
+    float my_mean = calculate_mean(my_samples, sample_num_mdate);
+    float mz_mean = calculate_mean(mz_samples, sample_num_mdate);
+
+    float mx_stddev = calculate_stddev(mx_samples, sample_num_mdate, mx_mean);
+    float my_stddev = calculate_stddev(my_samples, sample_num_mdate, my_mean);
+    float mz_stddev = calculate_stddev(mz_samples, sample_num_mdate, mz_mean);
+
+    // Filter outliers
+    float mx_filtered[sample_num_mdate], my_filtered[sample_num_mdate], mz_filtered[sample_num_mdate];
+    int mx_filtered_size = filter_outliers(mx_samples, sample_num_mdate, mx_mean, mx_stddev, mx_filtered);
+    int my_filtered_size = filter_outliers(my_samples, sample_num_mdate, my_mean, my_stddev, my_filtered);
+    int mz_filtered_size = filter_outliers(mz_samples, sample_num_mdate, mz_mean, mz_stddev, mz_filtered);
+
+    // Calculate the final mean for each axis
+    mx_centre = calculate_median(mx_filtered, mx_filtered_size);
+    my_centre = calculate_median(my_filtered, my_filtered_size);
+    mz_centre = calculate_median(mz_filtered, mz_filtered_size);
+
+    // Print the results
+    Serial.print("Calibration Results: ");
+    Serial.print("mx_centre: ");
+    Serial.print(mx_centre);
+    Serial.print(" my_centre: ");
+    Serial.print(my_centre);
+    Serial.print(" mz_centre: ");
+    Serial.println(mz_centre);
+}
+
+void getRawAccel_Data(MPU9250 accelgyro) {
+    accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
+
+    Axyz[0] = ((double) ax / 16384);
+    Axyz[1] = ((double) ay / 16384);
+    Axyz[2] = ((double) az / 16384);
+}
+
+void getAccel_Data(MPU9250 accelgyro) {
+    accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
+
+    float rawAx = ((double) ax / 16384) - ax_centre;
+    float rawAy = ((double) ay / 16384) - ay_centre;
+    float rawAz = ((double) az / 16384) - az_centre;
+
+    // float rawGx = (double) gx * 250 / 32768;
+    // float rawGy = (double) gy * 250 / 32768;
+    // float rawGz = (double) gz * 250 / 32768;
+
+    // Apply Kalman filter to each axis
+    //  Axyz[0] = kalmanFilter(0, rawAx, rawGx, dt); // Filtered X-axis
+    //  Axyz[1] = kalmanFilter(1, rawAy, rawGy, dt); // Filtered Y-axis
+    //  Axyz[2] = kalmanFilter(2, rawAz, rawGz, dt); // Filtered Z-axis
+
+    Axyz[0] = rawAx;
+    Axyz[1] = rawAy;
+    Axyz[2] = rawAz;
+}
+
+
+void getRawGyro_Data(MPU9250 accelgyro)
+{
+    accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
+    Gxyz[0] = (double) gx * 250 / 32768;
+    Gxyz[1] = (double) gy * 250 / 32768;
+    Gxyz[2] = (double) gz * 250 / 32768;
+}
+
+void getGyro_Data(MPU9250 accelgyro)
+{
+    accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
+
+    Gxyz[0] = ((double) gx * 250 / 32768) - gx_centre;
+    Gxyz[1] = ((double) gy * 250 / 32768) - gy_centre;
+    Gxyz[2] = ((double) gz * 250 / 32768) - gz_centre;
+
+}
+
+void getCompass_Data(MPU9250 accelgyro)
+{
+    accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
+    Mxyz[0] = (double) mx * 250 / 32768;
+    Mxyz[1] = (double) my * 250 / 32768;
+    Mxyz[2] = (double) mz * 250 / 32768;
+}
+
+void getCompassDate_calibrated (MPU9250 accelgyro)
+{
+    getCompass_Data(accelgyro);
+    Mxyz[0] = Mxyz[0] - mx_centre;
+    Mxyz[1] = Mxyz[1] - my_centre;
+    Mxyz[2] = Mxyz[2] - mz_centre;
+}
+
+void resetSpeed() {
+  speed_x = 0;
+  speed_y = 0;
+}
+
+
+
+/*
+MATH FUNCTIONS
+*/
+
 
 
 // Function to compute median
@@ -431,209 +578,4 @@ int filter_outliers(float* data, int size, float mean, float stddev, float* filt
     }
     return filtered_size;
 }
-
-void calibrate_magnetometer() {
-    float mx_samples[sample_num_mdate];
-    float my_samples[sample_num_mdate];
-    float mz_samples[sample_num_mdate];
-
-    // Collect samples
-    for (int i = 0; i < sample_num_mdate; i++) {
-        getCompass_Data();
-        mx_samples[i] = Mxyz[0];
-        my_samples[i] = Mxyz[1];
-        mz_samples[i] = Mxyz[2];
-    }
-
-    // Calculate mean and standard deviation for each axis
-    float mx_mean = calculate_mean(mx_samples, sample_num_mdate);
-    float my_mean = calculate_mean(my_samples, sample_num_mdate);
-    float mz_mean = calculate_mean(mz_samples, sample_num_mdate);
-
-    float mx_stddev = calculate_stddev(mx_samples, sample_num_mdate, mx_mean);
-    float my_stddev = calculate_stddev(my_samples, sample_num_mdate, my_mean);
-    float mz_stddev = calculate_stddev(mz_samples, sample_num_mdate, mz_mean);
-
-    // Filter outliers
-    float mx_filtered[sample_num_mdate], my_filtered[sample_num_mdate], mz_filtered[sample_num_mdate];
-    int mx_filtered_size = filter_outliers(mx_samples, sample_num_mdate, mx_mean, mx_stddev, mx_filtered);
-    int my_filtered_size = filter_outliers(my_samples, sample_num_mdate, my_mean, my_stddev, my_filtered);
-    int mz_filtered_size = filter_outliers(mz_samples, sample_num_mdate, mz_mean, mz_stddev, mz_filtered);
-
-    // Calculate the final mean for each axis
-    mx_centre = calculate_median(mx_filtered, mx_filtered_size);
-    my_centre = calculate_median(my_filtered, my_filtered_size);
-    mz_centre = calculate_median(mz_filtered, mz_filtered_size);
-
-    // Print the results
-    Serial.print("Calibration Results: ");
-    Serial.print("mx_centre: ");
-    Serial.print(mx_centre);
-    Serial.print(" my_centre: ");
-    Serial.print(my_centre);
-    Serial.print(" mz_centre: ");
-    Serial.println(mz_centre);
-}
-
-void calibrate_accelerometer() {
-
-    float ax_samples[sample_num_adate];
-    float ay_samples[sample_num_adate];
-    float az_samples[sample_num_adate];
-
-    // Collect samples
-    for (int i = 0; i < sample_num_adate; i++) {
-        getRawAccel_Data();
-        ax_samples[i] = Axyz[0];
-        ay_samples[i] = Axyz[1];
-        az_samples[i] = Axyz[2];
-        delay(100);
-    }
-
-    // Calculate mean and standard deviation for each axis
-    float ax_mean = calculate_mean(ax_samples, sample_num_adate);
-    float ay_mean = calculate_mean(ay_samples, sample_num_adate);
-    float az_mean = calculate_mean(az_samples, sample_num_adate);
-
-    float ax_stddev = calculate_stddev(ax_samples, sample_num_adate, ax_mean);
-    float ay_stddev = calculate_stddev(ay_samples, sample_num_adate, ay_mean);
-    float az_stddev = calculate_stddev(az_samples, sample_num_adate, az_mean);
-
-    // Filter outliers
-    float ax_filtered[sample_num_mdate], ay_filtered[sample_num_mdate], az_filtered[sample_num_mdate];
-    int ax_filtered_size = filter_outliers(ax_samples, sample_num_mdate, ax_mean, ax_stddev, ax_filtered);
-    int ay_filtered_size = filter_outliers(ay_samples, sample_num_mdate, ay_mean, ay_stddev, ay_filtered);
-    int az_filtered_size = filter_outliers(az_samples, sample_num_mdate, az_mean, az_stddev, az_filtered);
-
-    // Calculate the final mean for each axis
-    ax_centre = calculate_median(ax_filtered, ax_filtered_size);
-    ay_centre = calculate_median(ay_filtered, ay_filtered_size);
-    az_centre = calculate_median(az_filtered, az_filtered_size) - 1.0;
-
-    // Print the results
-    Serial.print("Calibration Results: ");
-    Serial.print("ax_centre: ");
-    Serial.print(ax_centre);
-    Serial.print(" ay_centre: ");
-    Serial.print(ay_centre);
-    Serial.print(" az_centre: ");
-    Serial.println(az_centre);
-}
-
-void calibrate_gyroscope() {
-
-    float gx_samples[sample_num_gdate];
-    float gy_samples[sample_num_gdate];
-    float gz_samples[sample_num_gdate];
-
-    // Collect samples
-    for (int i = 0; i < sample_num_adate; i++) {
-        getRawGyro_Data();
-        gx_samples[i] = Gxyz[0];
-        gy_samples[i] = Gxyz[1];
-        gz_samples[i] = Gxyz[2];
-        delay(100);
-    }
-
-    // Calculate mean and standard deviation for each axis
-    float gx_mean = calculate_mean(gx_samples, sample_num_adate);
-    float gy_mean = calculate_mean(gy_samples, sample_num_adate);
-    float gz_mean = calculate_mean(gz_samples, sample_num_adate);
-
-    float gx_stddev = calculate_stddev(gx_samples, sample_num_adate, gx_mean);
-    float gy_stddev = calculate_stddev(gy_samples, sample_num_adate, gy_mean);
-    float gz_stddev = calculate_stddev(gz_samples, sample_num_adate, gz_mean);
-
-    // Filter outliers
-    float gx_filtered[sample_num_mdate], gy_filtered[sample_num_mdate], gz_filtered[sample_num_mdate];
-    int gx_filtered_size = filter_outliers(gx_samples, sample_num_mdate, gx_mean, gx_stddev, gx_filtered);
-    int gy_filtered_size = filter_outliers(gy_samples, sample_num_mdate, gy_mean, gy_stddev, gy_filtered);
-    int gz_filtered_size = filter_outliers(gz_samples, sample_num_mdate, gz_mean, gz_stddev, gz_filtered);
-
-    // Calculate the final mean for each axis
-    gx_centre = calculate_median(gx_filtered, gx_filtered_size);
-    gy_centre = calculate_median(gy_filtered, gy_filtered_size);
-    gz_centre = calculate_median(gz_filtered, gz_filtered_size);
-
-    // Print the results
-    Serial.print("Calibration Results: ");
-    Serial.print("gx_centre: ");
-    Serial.print(gx_centre);
-    Serial.print(" gy_centre: ");
-    Serial.print(gy_centre);
-    Serial.print(" gz_centre: ");
-    Serial.println(gz_centre);
-}
-
-void getRawAccel_Data(void) {
-    accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
-
-    Axyz[0] = ((double) ax / 16384);
-    Axyz[1] = ((double) ay / 16384);
-    Axyz[2] = ((double) az / 16384);
-}
-
-void getAccel_Data(void) {
-    accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
-
-    float rawAx = ((double) ax / 16384) - ax_centre;
-    float rawAy = ((double) ay / 16384) - ay_centre;
-    float rawAz = ((double) az / 16384) - az_centre;
-
-    // float rawGx = (double) gx * 250 / 32768;
-    // float rawGy = (double) gy * 250 / 32768;
-    // float rawGz = (double) gz * 250 / 32768;
-
-    // Apply Kalman filter to each axis
-    //  Axyz[0] = kalmanFilter(0, rawAx, rawGx, dt); // Filtered X-axis
-    //  Axyz[1] = kalmanFilter(1, rawAy, rawGy, dt); // Filtered Y-axis
-    //  Axyz[2] = kalmanFilter(2, rawAz, rawGz, dt); // Filtered Z-axis
-
-    Axyz[0] = rawAx;
-    Axyz[1] = rawAy;
-    Axyz[2] = rawAz;
-}
-
-
-void getRawGyro_Data(void)
-{
-    accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
-    Gxyz[0] = (double) gx * 250 / 32768;
-    Gxyz[1] = (double) gy * 250 / 32768;
-    Gxyz[2] = (double) gz * 250 / 32768;
-}
-
-void getGyro_Data(void)
-{
-    accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
-
-    Gxyz[0] = ((double) gx * 250 / 32768) - gx_centre;
-    Gxyz[1] = ((double) gy * 250 / 32768) - gy_centre;
-    Gxyz[2] = ((double) gz * 250 / 32768) - gz_centre;
-
-}
-
-void getCompass_Data(void)
-{
-    I2C_M.writeByte(MPU9150_RA_MAG_ADDRESS, 0x0A, 0x01); //enable the magnetometer
-    delay(10);
-    I2C_M.readBytes(MPU9150_RA_MAG_ADDRESS, MPU9150_RA_MAG_XOUT_L, 6, buffer_m);
-
-    mx = ((int16_t)(buffer_m[1]) << 8) | buffer_m[0] ;
-    my = ((int16_t)(buffer_m[3]) << 8) | buffer_m[2] ;
-    mz = ((int16_t)(buffer_m[5]) << 8) | buffer_m[4] ;
-
-    Mxyz[0] = (double) mx * 1200 / 4096;
-    Mxyz[1] = (double) my * 1200 / 4096;
-    Mxyz[2] = (double) mz * 1200 / 4096;
-}
-
-void getCompassDate_calibrated ()
-{
-    getCompass_Data();
-    Mxyz[0] = Mxyz[0] - mx_centre;
-    Mxyz[1] = Mxyz[1] - my_centre;
-    Mxyz[2] = Mxyz[2] - mz_centre;
-}
-
 
