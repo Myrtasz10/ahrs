@@ -10,20 +10,15 @@
 // specific I2C addresses may be passed as a parameter here
 // AD0 low = 0x68 (default for InvenSense evaluation board)
 // AD0 high = 0x69
-//MPU9250 accelgyro_1(0x68);
+MPU9250 accelgyro_1(0x68);
 MPU9250 accelgyro_2(0x69);
 I2Cdev I2C_M;
 
 uint8_t buffer_m[6];
 
-
-
 int16_t ax, ay, az;
 int16_t gx, gy, gz;
 int16_t mx, my, mz;
-
-float pitch;
-float roll;
 
 float heading;
 float tiltheading;
@@ -32,12 +27,11 @@ float Axyz[3];
 float Gxyz[3];
 float Mxyz[3];
 
-float Displacementxyz[3] = { 0.0, 0.0, 0.0 };
+float Displacementxy[2] = { 0.0, 0.0};
 
-
-#define sample_num_adate 10
-#define sample_num_gdate 10
-#define sample_num_mdate 10
+#define sample_num_adate 50
+#define sample_num_gdate 50
+#define sample_num_mdate 50
 
 static float ax_centre = 0;
 static float ay_centre = 0;
@@ -59,16 +53,9 @@ static float xe = 0;
 static float yn = 0;
 static float ye = 0;
 
-
-// // Kalman filter variables for each axis
-// float accelEstimateX = 0.0, accelEstimateY = 0.0, accelEstimateZ = 0.0;
-// float accelErrorEstimateX = 1.0, accelErrorEstimateY = 1.0, accelErrorEstimateZ = 1.0;
-// float accelErrorMeasureX = 0.1, accelErrorMeasureY = 0.1, accelErrorMeasureZ = 0.1; // Initial error in measurement, tune this
-// float kalmanGainX = 0.0, kalmanGainY = 0.0, kalmanGainZ = 0.0;
-
-// float gyroEstimateX = 0.0, gyroEstimateY = 0.0, gyroEstimateZ = 0.0; // Gyro estimates
-// float gyroErrorEstimateX = 1.0, gyroErrorEstimateY = 1.0, gyroErrorEstimateZ = 1.0; // Error estimates for gyro
-// float kalmanGainGyroX = 0.0, kalmanGainGyroY = 0.0, kalmanGainGyroZ = 0.0; // Kalman gains for gyro
+unsigned long lastTime = 0;  // Stores the last update time
+unsigned long currentTime = 0;
+float dt = 0.0;
 
 float RateRoll, RatePitch, RateYaw;
 float RateCalibrationRoll, RateCalibrationPitch, RateCalibrationYaw;
@@ -96,60 +83,47 @@ void kalman_1d(float KalmanState, float KalmanUncertainty, float KalmanInput, fl
   Kalman1DOutput[1] = KalmanUncertainty;
 }
 
-
-// Variables to store integrated angles
-float gyroRoll = 0.0;
-float gyroPitch = 0.0;
-
-// Function to update angles using gyroscope integration
-void updateGyroAngles(float deltatime) {
-    // Integrate gyro rates over time to get angles (degrees)
-    gyroRoll  += Gxyz[0] * deltatime;
-    gyroPitch += Gxyz[1] * deltatime;
-}
-
 void setup() {
   // join I2C bus (I2Cdev library doesn't do this automatically)
   Wire.begin();
 
   // initialize serial communication
-  // (38400 chosen because it works as well at 8MHz as it does at 16MHz, but
-  // it's really up to you depending on your project)
   Serial.begin(38400);
 
   // initialize device
   Serial.println("Initializing I2C devices...");
-  //accelgyro_1.initialize();
+  accelgyro_1.initialize();
   accelgyro_2.initialize();
 
   // verify connection
   Serial.println("Testing device connections...");
-  //Serial.println(accelgyro_1.testConnection() ? "[1] MPU9250 connection successful" : "[1] MPU9250 connection failed");
+  Serial.println(accelgyro_1.testConnection() ? "[1] MPU9250 connection successful" : "[1] MPU9250 connection failed");
   Serial.println(accelgyro_2.testConnection() ? "[2] MPU9250 connection successful" : "[2] MPU9250 connection failed");
 
   delay(1000);
   Serial.println("     ");
 
-  Axyz_init_calibrated(accelgyro_2);
-  Gxyz_init_calibrated(accelgyro_2);
-  //Mxyz_init_calibrated(accelgyro_2);
+  if(accelgyro_1.testConnection()) {
+    Axyz_init_calibrated(accelgyro_1);
+    Gxyz_init_calibrated(accelgyro_1);
+    Mxyz_init_calibrated(accelgyro_1);
+  }
+
+  if(accelgyro_2.testConnection()) {
+    Axyz_init_calibrated(accelgyro_2);
+    Gxyz_init_calibrated(accelgyro_2);
+    Mxyz_init_calibrated(accelgyro_2);
+  }
 }
 
-unsigned long lastTime = 0;  // Stores the last update time
-unsigned long currentTime = 0;
-float dt = 0.0;
-
 void loop() {
-  currentTime = millis();                  // Get the current time
-  dt = (currentTime - lastTime) / 1000.0;  // Time difference in seconds
-  lastTime = currentTime;                  // Update the last time
+  currentTime = millis();                
+  dt = (currentTime - lastTime) / 1000.0;  
+  lastTime = currentTime;                  
 
   getAccel_Data(accelgyro_2);
   getGyro_Data(accelgyro_2);
   getCompassDate_calibrated(accelgyro_2);
-  getHeading();
-  getTiltHeading();
-  updateGyroAngles(dt);
 
   AngleRoll = atan(Axyz[1] / sqrt(Axyz[0] * Axyz[0] + Axyz[2] * Axyz[2])) * 1 / (3.142 / 180);
   AnglePitch = -atan(Axyz[0] / sqrt(Axyz[1] * Axyz[1] + Axyz[2] * Axyz[2])) * 1 / (3.142 / 180);
@@ -163,100 +137,37 @@ void loop() {
   kalman_1d(KalmanAnglePitch, KalmanUncertaintyAnglePitch, RatePitch, AnglePitch, dt);
   KalmanAnglePitch = Kalman1DOutput[0];
   KalmanUncertaintyAnglePitch = Kalman1DOutput[1];
-  // Serial.print("Roll Angle [°] ");
-  // Serial.print(KalmanAngleRoll);
-  // Serial.print(" Pitch Angle [°] ");
-  // Serial.println(KalmanAnglePitch);
 
-  // Serial.println("calibration parameter: ");
-  // Serial.print(mx_centre);
-  // Serial.print("         ");
-  // Serial.print(my_centre);
-  // Serial.print("         ");
-  // Serial.println(mz_centre);
-  // Serial.println("     ");
+  Serial.print("Roll Angle [°] ");
+  Serial.print(KalmanAngleRoll);
+  Serial.print(" Pitch Angle [°] ");
+  Serial.println(KalmanAnglePitch);
 
-  //Serial.println("Acceleration(g) of X,Y,Z:");
-  Serial.print(Axyz[0], 6);
+  getHeading();
+  getTiltHeading();
+
+  float radTiltHeading = tiltheading / 180 * 3.142;
+  float radRoll = KalmanAngleRoll / 180 * 3.142;
+  float radPitch = KalmanAnglePitch / 180 * 3.142;
+
+  float acceleration_x = ((Axyz[0] + sin(radPitch)) / cos(radPitch)) * 9.81 * dt;
+  float acceleration_y = ((Axyz[1] - sin(radRoll)) / cos(radRoll)) * 9.81 * dt;
+
+  speed_x += acceleration_x;
+  speed_y += acceleration_y;
+
+  xe = speed_x * sin(radTiltHeading);
+  xn = speed_x * cos(radTiltHeading);
+  yn = speed_y * sin(radTiltHeading);
+  ye = speed_y * cos(radTiltHeading);
+
+  Displacementxy[0] += (xn-yn)*dt;
+  Displacementxy[1] += (xe+ye)*dt;
+
+  Serial.println("Displacement(m) of X,Y:");
+  Serial.print(Displacementxy[0], 6);
   Serial.print(",");
-  Serial.print(Axyz[1], 6);
-  Serial.print(",");
-  Serial.print(Axyz[2], 6);
-
-  //Serial.println("Gyro(degress/s) of X,Y,Z:");
-  Serial.print(Gxyz[0], 6);
-  Serial.print(",");
-  Serial.print(Gxyz[1], 6);
-  Serial.print(",");
-  Serial.print(Gxyz[2], 6);
-  Serial.print(",");
-  Serial.print(pitch*180/3.142, 6);
-  Serial.print(",");
-  Serial.print(roll*180/3.142, 6);
-  Serial.print(",");
-  Serial.print(gyroPitch, 6);
-  Serial.print(",");
-  Serial.print(gyroRoll, 6);
-  Serial.print(",");
-  Serial.print(KalmanAnglePitch, 6);
-  Serial.print(",");
-  Serial.print(KalmanAngleRoll, 6);
-
-  // Serial.print("Pitch: ");
-  // Serial.println(pitch);
-  // Serial.print("Roll: ");
-  // Serial.println(roll);
-  // Serial.println("Compass Value of X,Y,Z:");
-  // Serial.print(Mxyz[0]);
-  // Serial.print(",");
-  // Serial.print(Mxyz[1]);
-  // Serial.print(",");
-  // Serial.println(Mxyz[2]);
-  // Serial.println("The clockwise angle between the magnetic north and X-Axis:");
-  // Serial.print(heading);
-  // Serial.println(" ");
-  // Serial.println("The clockwise angle between the magnetic north and the projection of the positive X-Axis in the horizontal plane:");
-  // Serial.println(tiltheading);
-  // Serial.println("   ");
-
-  // float radTiltHeading = tiltheading / 180 * 3.142;
-  // float radRoll = KalmanAngleRoll / 180 * 3.142;
-  // float radPitch = KalmanAnglePitch / 180 * 3.142;
-
-  // float acceleration_x = ((Axyz[0] + sin(radPitch)) / cos(radPitch)) * 9.81 * dt;
-  // float acceleration_y = ((Axyz[1] - sin(radRoll)) / cos(radRoll)) * 9.81 * dt;
-
-  // speed_x += acceleration_x;
-  // speed_y += acceleration_y;
-
-  // xe = speed_x * sin(radTiltHeading);
-  // xn = speed_x * cos(radTiltHeading);
-  // yn = speed_y * sin(radTiltHeading);
-  // ye = speed_y * cos(radTiltHeading);
-
-  // Displacementxyz[0] += (speed_x)*dt;
-  // Displacementxyz[1] += (speed_y)*dt;
-  // // Displacementxyz[0] += (xn-yn)*dt;
-  // // Displacementxyz[1] += (xe+ye)*dt;
-  // // //Displacementxyz[2] += (Axyz[2]-1.0) * dt;
-
-  // Serial.println("Acceleration of X,Y:");
-  // Serial.print(acceleration_x);
-  // Serial.print(", ");
-  // Serial.print(acceleration_y);
-  // Serial.println();
-
-  // Serial.println("Speed of X,Y:");
-  // Serial.print(speed_x);
-  // Serial.print(", ");
-  // Serial.print(speed_y);
-  // Serial.println();
-  // Serial.println("Displacement(g) of X,Y:");
-  // Serial.print(Displacementxyz[0]);
-  // Serial.print(",");
-  // Serial.print(Displacementxyz[1]);
-
-  Serial.println();
+  Serial.print(Displacementxy[1], 6);
 }
 
 
@@ -271,9 +182,6 @@ void getHeading(void) {
 }
 
 void getTiltHeading(void) {
-  pitch = asin(-Axyz[0]);
-  roll = asin(Axyz[1] / cos(pitch));
-
   float xh = Mxyz[0] * cos(pitch) + Mxyz[2] * sin(pitch);
   float yh = Mxyz[0] * sin(roll) * sin(pitch) + Mxyz[1] * cos(roll) - Mxyz[2] * sin(roll) * cos(pitch);
   float zh = -Mxyz[0] * cos(roll) * sin(pitch) + Mxyz[1] * sin(roll) + Mxyz[2] * cos(roll) * cos(pitch);
