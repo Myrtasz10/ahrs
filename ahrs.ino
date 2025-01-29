@@ -5,14 +5,13 @@
 // for both classes must be in the include path of your project
 #include "I2Cdev.h"
 #include "MPU9250.h"
-#include "BMP180.h"
 
 // class default I2C address is 0x68
 // specific I2C addresses may be passed as a parameter here
 // AD0 low = 0x68 (default for InvenSense evaluation board)
 // AD0 high = 0x69
 //MPU9250 accelgyro_1(0x68);
-MPU9250 accelgyro_2(0x69);
+MPU9250 accelgyro_2(0x68);
 I2Cdev   I2C_M;
 
 uint8_t buffer_m[6];
@@ -201,27 +200,32 @@ void loop()
     // Serial.println(tiltheading);
     // Serial.println("   ");
 
-    // float radTiltHeading = tiltHeading / 180 * 3.142;
-    // float radRoll = KalmanAngleRoll / 180 * 3.142;
-    // float radPitch = KalmanAnglePitch / 180 * 3.142;
+    float radTiltHeading = tiltheading / 180 * 3.142;
+    float radRoll = KalmanAngleRoll / 180 * 3.142;
+    float radPitch = KalmanAnglePitch / 180 * 3.142;
 
-    // speed_x += (Axyz[0]) * dt;
-    // speed_y += (Axyz[1]) * dt;
+    speed_x += (Axyz[0]) * 9.81 * dt;
+    speed_y += (Axyz[1]) * 9.81 * dt;
 
-    // xe = speed_x*sin(radTiltHeading);
-    // xn = speed_x*cos(radTiltHeading);
-    // yn = speed_y*sin(radTiltHeading);
-    // ye = speed_y*cos(radTiltHeading);
+    xe = speed_x*sin(radTiltHeading);
+    xn = speed_x*cos(radTiltHeading);
+    yn = speed_y*sin(radTiltHeading);
+    ye = speed_y*cos(radTiltHeading);
 
 
-    // Displacementxyz[0] += (xn-yn)*dt;
-    // Displacementxyz[1] += (xe+ye)*dt;
+    Displacementxyz[0] += (xn-yn)*dt;
+    Displacementxyz[1] += (xe+ye)*dt;
     // //Displacementxyz[2] += (Axyz[2]-1.0) * dt;
 
-    // Serial.println("Displacement(g) of X,Y:");
-    // Serial.print(Displacementxyz[0]);
-    // Serial.print(",");
-    // Serial.print(Displacementxyz[1]);
+    Serial.println("Speed[???] of X,Y:");
+    Serial.print(speed_x);
+    Serial.print(", ");
+    Serial.print(speed_y);
+    Serial.println();
+    Serial.println("Displacement(g) of X,Y:");
+    Serial.print(Displacementxyz[0]);
+    Serial.print(",");
+    Serial.print(Displacementxyz[1]);
 
     Serial.println();
 }
