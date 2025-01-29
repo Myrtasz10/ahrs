@@ -23,6 +23,9 @@ int16_t mx, my, mz;
 float heading;
 float tiltheading;
 
+float radRoll;
+float radPitch;
+
 float Axyz[3];
 float Gxyz[3];
 float Mxyz[3];
@@ -143,12 +146,13 @@ void loop() {
   Serial.print(" Pitch Angle [°] ");
   Serial.println(KalmanAnglePitch);
 
+  radRoll = KalmanAngleRoll / 180 * 3.142;
+  radPitch = KalmanAnglePitch / 180 * 3.142;
+
   getHeading();
   getTiltHeading();
 
   float radTiltHeading = tiltheading / 180 * 3.142;
-  float radRoll = KalmanAngleRoll / 180 * 3.142;
-  float radPitch = KalmanAnglePitch / 180 * 3.142;
 
   float acceleration_x = ((Axyz[0] + sin(radPitch)) / cos(radPitch)) * 9.81 * dt;
   float acceleration_y = ((Axyz[1] - sin(radRoll)) / cos(radRoll)) * 9.81 * dt;
@@ -182,9 +186,9 @@ void getHeading(void) {
 }
 
 void getTiltHeading(void) {
-  float xh = Mxyz[0] * cos(pitch) + Mxyz[2] * sin(pitch);
-  float yh = Mxyz[0] * sin(roll) * sin(pitch) + Mxyz[1] * cos(roll) - Mxyz[2] * sin(roll) * cos(pitch);
-  float zh = -Mxyz[0] * cos(roll) * sin(pitch) + Mxyz[1] * sin(roll) + Mxyz[2] * cos(roll) * cos(pitch);
+  float xh = Mxyz[0] * cos(radPitch) + Mxyz[2] * sin(radPitch);
+  float yh = Mxyz[0] * sin(radRoll) * sin(radPitch) + Mxyz[1] * cos(radRoll) - Mxyz[2] * sin(radRoll) * cos(radPitch);
+  float zh = -Mxyz[0] * cos(radRoll) * sin(radPitch) + Mxyz[1] * sin(radRoll) + Mxyz[2] * cos(radRoll) * cos(radPitch);
   tiltheading = 180 * atan2(yh, xh) / PI;
   if (yh < 0) tiltheading += 360;
 }
